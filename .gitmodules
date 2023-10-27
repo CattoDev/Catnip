@@ -1,0 +1,9 @@
+[submodule "libraries/thread-pool"]
+	path = libraries/thread-pool
+	url = https://github.com/bshoshany/thread-pool
+[submodule "libraries/inflatecpp"]
+	path = libraries/inflatecpp
+	url = https://github.com/Artexety/inflatecpp
+[submodule "libraries/gzip-hpp"]
+	path = libraries/gzip-hpp
+	url = https://github.com/mapbox/gzip-hpp

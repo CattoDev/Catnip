@@ -1,0 +1,9 @@
+{
+	"geode": "1.3.5",
+	"version": "v1.0.0",
+	"id": "cattodev.catnip",
+	"name": "Catnip",
+	"developer": "CattoDev",
+	"description": "",
+	"early-load": true
+}
