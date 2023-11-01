@@ -10,10 +10,9 @@
 class CatnipThreadPool {
 private:
     std::vector<ThreadPoolWorker*> workers;
-    std::queue<DataLoadingType> dataQueue, finishedQueue;
+    std::queue<DataLoadingType*> dataQueue, finishedQueue;
     unsigned int threadCount;
     bool scheduleShutdown = false;
-    bool canStopWorking = false;
     int workersDone = 0;
     std::mutex workerLock, queueDataLock, finishedQueueLock;
 
@@ -24,13 +23,12 @@ public:
 
     unsigned int getThreadCount();
     void workerLoop(ThreadPoolWorker*);
-    void queueTask(DataLoadingType);
+    void queueTask(DataLoadingType*);
     void startPool();
     void terminatePool();
     void waitForTasks();
     bool poolFinished();
-    DataLoadingType tryGetFinishedResult();
-    void tasksAdded();
+    DataLoadingType* tryGetFinishedResult(bool&);
 };
 
 #endif

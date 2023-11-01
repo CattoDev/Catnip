@@ -1,9 +1,30 @@
 {
 	"geode": "1.3.5",
-	"version": "v1.0.0",
+	"version": "v1.0.0-alpha.1",
 	"id": "cattodev.catnip",
 	"name": "Catnip",
 	"developer": "CattoDev",
 	"description": "",
+	"tags": [ "Optimization" ],
+	"settings": {
+		"preprocessed-images": {
+			"name": "Use cached textures",
+			"description": "Use cached textures for loading, may significantly decrease loading time on lower-end devices.",
+			"type": "bool",
+			"default": false
+		},
+		"preload-mod-tex": {
+			"name": "Preload mod images",
+			"description": "Preload separate textures of other mods at loading (usually only spritesheets are loaded at launch).",
+			"type": "bool",
+			"default": true
+		},
+		"mt-mod-tex": {
+			"name": "Multithread mod loading",
+			"description": "Preload mod textures using threads.",
+			"type": "bool",
+			"default": true
+		}
+	},
 	"early-load": true
 }

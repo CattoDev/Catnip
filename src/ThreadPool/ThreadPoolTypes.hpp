@@ -12,17 +12,22 @@ struct ThreadPoolWorker {
     bool finished = false;
 };
 
+struct DataLoadingStruct {
+
+};
+
 struct DataLoadingType {
-    std::any data;
-    std::function<bool(std::any&)> process;
-    bool valid = true;
+    DataLoadingStruct* data;
+    std::function<bool(DataLoadingStruct*)> process;
 
     DataLoadingType() {}
-    DataLoadingType(std::any d, std::function<bool(std::any&)> func) {
+    DataLoadingType(DataLoadingStruct* d, std::function<bool(DataLoadingStruct*)> func) {
         data = d;
         process = func;
     }
-    ~DataLoadingType() {}
+    ~DataLoadingType() {
+        CC_SAFE_DELETE(data);
+    }
 };
 
 #endif

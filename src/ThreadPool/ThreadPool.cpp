@@ -23,20 +23,18 @@ unsigned int CatnipThreadPool::getThreadCount() {
 void CatnipThreadPool::workerLoop(ThreadPoolWorker* worker) {
     while(true) {
         // get queued data
-        DataLoadingType data;
-        bool set = false;
+        DataLoadingType* data = nullptr;
         {
             DataLock
             if(!dataQueue.empty()) {
                 data = dataQueue.front();
                 dataQueue.pop();
-                set = true;
             }
         }
 
         // process data
-        if(set) {
-            if(data.process(data.data)) {
+        if(data) {
+            if(data->process(data->data)) {
                 ResultLock
                 finishedQueue.push(data);
             } 
@@ -48,7 +46,7 @@ void CatnipThreadPool::workerLoop(ThreadPoolWorker* worker) {
         }
         else {
             WorkerLock
-            if(!worker->finished && canStopWorking) {
+            if(!worker->finished) {
                 workersDone++;
                 worker->finished = true;
             }
@@ -58,7 +56,7 @@ void CatnipThreadPool::workerLoop(ThreadPoolWorker* worker) {
     }
 }
 
-void CatnipThreadPool::queueTask(DataLoadingType data) {
+void CatnipThreadPool::queueTask(DataLoadingType* data) {
     DataLock
     dataQueue.push(data);
 }
@@ -93,6 +91,9 @@ void CatnipThreadPool::terminatePool() {
         w->thread.join();
         delete w;
     }
+    workers.clear();
+
+    scheduleShutdown = false;
 }
 
 void CatnipThreadPool::waitForTasks() {
@@ -101,31 +102,20 @@ void CatnipThreadPool::waitForTasks() {
 
 bool CatnipThreadPool::poolFinished() {
     WorkerLock
-    bool done = workersDone == this->getThreadCount();
-
-    if(done) {
-        canStopWorking = false;
-    }
-
-    return done;
+    return workersDone == this->getThreadCount();
 }
 
-DataLoadingType CatnipThreadPool::tryGetFinishedResult() {
-    DataLoadingType data;
-    data.valid = false;
-
+DataLoadingType* CatnipThreadPool::tryGetFinishedResult(bool& empty) {
+    empty = false;
+    DataLoadingType* data = nullptr;
     {
         ResultLock
         if(!finishedQueue.empty()) {
             data = finishedQueue.front();
             finishedQueue.pop();
         }
+        else if(this->poolFinished()) empty = true;
     }
-
+    
     return data;
-}
-
-void CatnipThreadPool::tasksAdded() {
-    WorkerLock
-    canStopWorking = true;
 }

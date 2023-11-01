@@ -1,12 +1,11 @@
 #include "Utils.hpp"
 
 #include "../libraries/png/png.h"
+#include <filesystem>
 
 unsigned char* getFileData(const char* filePath, unsigned long *bytesRead) {
 	*bytesRead = 0;
 	unsigned char* fileData = NULL;
-
-    //log::info("start read");
 
 	FILE *fp = fopen(filePath, "rb");
 
@@ -18,9 +17,15 @@ unsigned char* getFileData(const char* filePath, unsigned long *bytesRead) {
 
 	fclose(fp);
 
-    //log::info("end read");
-
 	return fileData;
+}
+
+void writeFileData(const char* filePath, unsigned char* data, unsigned long dataSize) {
+    FILE *fp = fopen(filePath, "wb");
+
+    fwrite(data, sizeof(data[0]), dataSize, fp);
+
+    fclose(fp);
 }
 
 typedef struct 
@@ -51,21 +56,21 @@ static void pngReadCallback(png_structp png_ptr, png_bytep data, png_size_t leng
     ((unsigned)((unsigned char)(vb) * ((unsigned char)(va) + 1) >> 8) << 16) | \
     ((unsigned)(unsigned char)(va) << 24))
 
-void createTextureFromFileTS(CCTexture2DThreaded& texData) {
+void createTextureFromFileTS(CCTexture2DThreaded* texData) {
     // get data
     unsigned long nDatalen = 0;
-    unsigned char* pData = getFileData(texData.filePath.c_str(), &nDatalen);
+    unsigned char* pData = getFileData(texData->filePath.string().c_str(), &nDatalen);
 
     if(!pData || nDatalen == 0) {
-        log::error("Failed to get file data for texture: {}", texData.filePath);
+        log::error("Failed to get file data for texture: {}", texData->filePath);
         
-        texData.successfulLoad = false;
+        texData->successfulLoad = false;
         return;
     }
 
     unsigned short m_nWidth, m_nHeight;
     int m_nBitsPerComponent;
-    bool m_bHasAlpha, m_bPreMulti;
+    bool m_bHasAlpha = false, m_bPreMulti = false;
 
     unsigned char* m_pData;
     bool enoughMemory = true;
@@ -152,7 +157,8 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
             rowbytes = png_get_rowbytes(png_ptr, info_ptr);
             
             try {
-                m_pData = new unsigned char[rowbytes * m_nHeight];
+                nDatalen = rowbytes * m_nHeight;
+                m_pData = new unsigned char[nDatalen];
             }
             catch(std::bad_alloc& ex) {
                 log::error("Not enough memory to load texture, delaying...");
@@ -172,7 +178,9 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
             if (channel == 4)
             {
                 m_bHasAlpha = true;
-                unsigned int *tmp = (unsigned int *)m_pData;
+
+                // commented out cuz it causes weird texture bugs
+                /*unsigned int *tmp = (unsigned int *)m_pData;
                 for(unsigned short i = 0; i < m_nHeight; i++)
                 {
                     for(unsigned int j = 0; j < rowbytes; j += 4)
@@ -180,7 +188,7 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                         *tmp++ = CC_RGB_PREMULTIPLY_ALPHA( row_pointers[i][j], row_pointers[i][j + 1], 
                                                         row_pointers[i][j + 2], row_pointers[i][j + 3] );
                     }
-                }
+                }*/
                 
                 m_bPreMulti = true;
             }
@@ -194,13 +202,11 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
         }
     }
 
-    if(pData) {
-        delete [] pData;
-    }
+    CC_SAFE_DELETE_ARRAY(pData);
 
     // init CCTexture2D
     if(!enoughMemory) {
-        texData.successfulLoad = false;
+        texData->successfulLoad = false;
     }
     else {
         unsigned char*            tempData = m_pData;
@@ -213,7 +219,7 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
 
         // compute pixel format
         if (m_bHasAlpha) {
-            _pixelFormat = texData.pixelFormat;
+            _pixelFormat = texData->pixelFormat;
         }
         else {
             if (bpp >= 8) {
@@ -232,8 +238,8 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
             if (m_bHasAlpha)
             {
                 // Convert "RRRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA" to "RRRRRGGGGGGBBBBB"
-                
-                tempData = new unsigned char[m_nWidth * m_nHeight * 2];
+                nDatalen = m_nWidth * m_nHeight * 2;
+                tempData = new unsigned char[nDatalen];
                 outPixel16 = (unsigned short*)tempData;
                 inPixel32 = (unsigned int*)m_pData;
                 
@@ -245,13 +251,13 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                     ((((*inPixel32 >> 16) & 0xFF) >> 3) << 0);    // B
                 }
 
-                texData.dataAltered = true;
+                texData->dataAltered = true;
             }
             else 
             {
                 // Convert "RRRRRRRRRGGGGGGGGBBBBBBBB" to "RRRRRGGGGGGBBBBB"
-                
-                tempData = new unsigned char[m_nWidth * m_nHeight * 2];
+                nDatalen = m_nWidth * m_nHeight * 2;
+                tempData = new unsigned char[nDatalen];
                 outPixel16 = (unsigned short*)tempData;
                 inPixel8 = (unsigned char*)m_pData;
                 
@@ -263,15 +269,15 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                     (((*inPixel8++ & 0xFF) >> 3) << 0);    // B
                 }
 
-                texData.dataAltered = true;
+                texData->dataAltered = true;
             }    
         }
         else if (_pixelFormat == kCCTexture2DPixelFormat_RGBA4444)
         {
             // Convert "RRRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA" to "RRRRGGGGBBBBAAAA"
-            
+            nDatalen = m_nWidth * m_nHeight * 2;
             inPixel32 = (unsigned int*)m_pData;  
-            tempData = new unsigned char[m_nWidth * m_nHeight * 2];
+            tempData = new unsigned char[nDatalen];
             outPixel16 = (unsigned short*)tempData;
             
             for(unsigned int i = 0; i < length; ++i, ++inPixel32)
@@ -283,13 +289,14 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                 ((((*inPixel32 >> 24) & 0xFF) >> 4) << 0);  // A
             }
 
-            texData.dataAltered = true;
+            texData->dataAltered = true;
         }
         else if (_pixelFormat == kCCTexture2DPixelFormat_RGB5A1)
         {
             // Convert "RRRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA" to "RRRRRGGGGGBBBBBA"
+            nDatalen = m_nWidth * m_nHeight * 2;
             inPixel32 = (unsigned int*)m_pData;   
-            tempData = new unsigned char[m_nWidth * m_nHeight * 2];
+            tempData = new unsigned char[nDatalen];
             outPixel16 = (unsigned short*)tempData;
             
             for(unsigned int i = 0; i < length; ++i, ++inPixel32)
@@ -301,13 +308,14 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                 ((((*inPixel32 >> 24) & 0xFF) >> 7) << 0);  // A
             }
 
-            texData.dataAltered = true;
+            texData->dataAltered = true;
         }
         else if (_pixelFormat == kCCTexture2DPixelFormat_A8)
         {
             // Convert "RRRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA" to "AAAAAAAA"
+            nDatalen = m_nWidth * m_nHeight;
             inPixel32 = (unsigned int*)m_pData;
-            tempData = new unsigned char[m_nWidth * m_nHeight];
+            tempData = new unsigned char[nDatalen];
             unsigned char *outPixel8 = tempData;
             
             for(unsigned int i = 0; i < length; ++i, ++inPixel32)
@@ -315,14 +323,15 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                 *outPixel8++ = (*inPixel32 >> 24) & 0xFF;  // A
             }
 
-            texData.dataAltered = true;
+            texData->dataAltered = true;
         }
         
         if (m_bHasAlpha && _pixelFormat == kCCTexture2DPixelFormat_RGB888)
         {
             // Convert "RRRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA" to "RRRRRRRRGGGGGGGGBBBBBBBB"
+            nDatalen = m_nWidth * m_nHeight * 3;
             inPixel32 = (unsigned int*)m_pData;
-            tempData = new unsigned char[m_nWidth * m_nHeight * 3];
+            tempData = new unsigned char[nDatalen];
             unsigned char *outPixel8 = tempData;
             
             for(unsigned int i = 0; i < length; ++i, ++inPixel32)
@@ -332,23 +341,23 @@ void createTextureFromFileTS(CCTexture2DThreaded& texData) {
                 *outPixel8++ = (*inPixel32 >> 16) & 0xFF; // B
             }
 
-            texData.dataAltered = true;
+            texData->dataAltered = true;
         }
 
-        if(texData.dataAltered) {
+        if(texData->dataAltered) {
             delete [] m_pData;
         }
 
         auto texture = new CCTexture2D();
         texture->m_bHasPremultipliedAlpha = m_bPreMulti;
         
-        texData.texture = texture;
-        texData.textureData = tempData;
-        texData.dataSize = nDatalen;
-        texData.imageSize = imageSize;
-        texData.width = m_nWidth;
-        texData.height = m_nHeight;
-        texData.pixelFormat = _pixelFormat;
+        texData->texture = texture;
+        texData->textureData = tempData;
+        texData->imageSize = imageSize;
+        texData->width = m_nWidth;
+        texData->height = m_nHeight;
+        texData->pixelFormat = _pixelFormat;
+        texData->dataSize = nDatalen;
     }
 }
 

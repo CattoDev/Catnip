@@ -8,7 +8,7 @@
 
 using namespace geode::prelude;
 
-struct CCTexture2DThreaded {
+struct CCTexture2DThreaded : DataLoadingStruct {
 	CCTexture2D* texture = nullptr;
 	unsigned char* textureData;
 	int width, height;
@@ -16,8 +16,12 @@ struct CCTexture2DThreaded {
     CCTexture2DPixelFormat pixelFormat;
     bool dataAltered = false;
     unsigned long dataSize = 0;
-    std::string filePath;
+    ghc::filesystem::path filePath;
+    std::string fileName;
     bool successfulLoad = true;
+    bool useCache = false;
+    bool createCache = false;
+    bool g_cachingEnabled = false;
 };
 
 namespace CatnipTimer {
@@ -27,6 +31,7 @@ namespace CatnipTimer {
 };
 
 unsigned char* getFileData(const char* filePath, unsigned long *bytesRead);
-void createTextureFromFileTS(CCTexture2DThreaded&);
+void writeFileData(const char* filePath, unsigned char* data, unsigned long dataSize);
+void createTextureFromFileTS(CCTexture2DThreaded*);
 
 #endif
