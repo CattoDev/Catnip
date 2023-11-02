@@ -32,13 +32,13 @@ void CacheManager::cacheProcessedImage(CCTexture2DThreaded* texData) {
     // save data to file
     CachedTexture cTex;
 
-	cTex.textureData = texData->textureData;
-	cTex.pixelFormat = texData->pixelFormat;
-	cTex.textureDataSize = texData->dataSize;
-	cTex.width = texData->width;
-	cTex.height = texData->height;
+    cTex.textureData = texData->textureData;
+    cTex.pixelFormat = texData->pixelFormat;
+    cTex.textureDataSize = texData->dataSize;
+    cTex.width = texData->width;
+    cTex.height = texData->height;
 
-	cTex.saveFile(filePath.string());
+    cTex.saveFile(filePath.string());
 }
 
 bool CacheManager::loadCachedTexture(ghc::filesystem::path filePath, CachedTexture& cTex) {
@@ -46,8 +46,8 @@ bool CacheManager::loadCachedTexture(ghc::filesystem::path filePath, CachedTextu
     auto fileName = getCacheFiletype(filePath.filename());
 
     // get cache path
-	auto cachePath = getCachePath() / fileName;
+    auto cachePath = getCachePath() / fileName;
 
-	// get texture
-	return cTex.loadFile(cachePath.string());
+    // get texture
+    return cTex.loadFile(cachePath.string());
 }

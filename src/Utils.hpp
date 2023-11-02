@@ -9,10 +9,10 @@
 using namespace geode::prelude;
 
 struct CCTexture2DThreaded : DataLoadingStruct {
-	CCTexture2D* texture = nullptr;
-	unsigned char* textureData;
-	int width, height;
-	CCSize imageSize;
+    CCTexture2D* texture = nullptr;
+    unsigned char* textureData;
+    int width, height;
+    CCSize imageSize;
     CCTexture2DPixelFormat pixelFormat;
     bool dataAltered = false;
     unsigned long dataSize = 0;

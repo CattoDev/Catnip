@@ -45,6 +45,7 @@ void CatnipThreadPool::workerLoop(ThreadPoolWorker* worker) {
             }
         }
         else {
+            // worker finished
             WorkerLock
             if(!worker->finished) {
                 workersDone++;

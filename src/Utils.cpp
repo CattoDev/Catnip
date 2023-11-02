@@ -4,20 +4,20 @@
 #include <filesystem>
 
 unsigned char* getFileData(const char* filePath, unsigned long *bytesRead) {
-	*bytesRead = 0;
-	unsigned char* fileData = NULL;
+    *bytesRead = 0;
+    unsigned char* fileData = NULL;
 
-	FILE *fp = fopen(filePath, "rb");
+    FILE *fp = fopen(filePath, "rb");
 
-	fseek(fp, 0, SEEK_END);
-	*bytesRead = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-	fileData = new unsigned char[*bytesRead];
-	*bytesRead = fread(fileData, sizeof(unsigned char), *bytesRead, fp);
+    fseek(fp, 0, SEEK_END);
+    *bytesRead = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    fileData = new unsigned char[*bytesRead];
+    *bytesRead = fread(fileData, sizeof(unsigned char), *bytesRead, fp);
 
-	fclose(fp);
+    fclose(fp);
 
-	return fileData;
+    return fileData;
 }
 
 void writeFileData(const char* filePath, unsigned char* data, unsigned long dataSize) {
