@@ -23,7 +23,7 @@ struct DictLoadData : DataLoadingStruct {
 
 std::mutex texCacheLock;
 class $modify(CatnipLoadingLayer, LoadingLayer) {
-    CCLabelBMFont* loadingLabel;
+    CCLabelBMFont* loadingLabel = nullptr;
     bool cacheTextures = false;
 
     std::vector<std::pair<std::string, CCTexture2D*>> allTextures;
@@ -187,7 +187,7 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         // finish loading textures
         tPool.waitForTasks();
 
-        // cache textures
+        // save cache data
         if(m_fields->cacheTextures) {
             cnl->saveCachedTexData();
         }
@@ -256,7 +256,7 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
     }
 
     void updateLoadingLabel(const char* status) {
-        loadingLabel->setCString(fmt::format("Catnip [{} threads]: {}", std::thread::hardware_concurrency(), status).c_str());
+        m_fields->loadingLabel->setCString(fmt::format("Catnip [{} threads]: {}", std::thread::hardware_concurrency(), status).c_str());
 
         // redraw frame
         CCDirector::sharedDirector()->getRunningScene()->visit();
@@ -273,10 +273,10 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         auto winSize = CCDirector::sharedDirector()->getWinSize();
 
         // loading label
-        loadingLabel = CCLabelBMFont::create("Catnip: Setting up", "goldFont.fnt");
-        loadingLabel->setPosition(winSize / 2 + CCPoint(0, -60));
-        loadingLabel->setScale(.4);
-        this->addChild(loadingLabel, 10);
+        m_fields->loadingLabel = CCLabelBMFont::create("Catnip: Setting up", "goldFont.fnt");
+        m_fields->loadingLabel->setPosition(winSize / 2 + CCPoint(0, -60));
+        m_fields->loadingLabel->setScale(.4);
+        this->addChild(m_fields->loadingLabel, 10);
 
         // hide loading bar
         for(size_t i = 0; i < this->getChildrenCount(); i++) {

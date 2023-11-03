@@ -4,6 +4,10 @@
 #define DataLock std::lock_guard<std::mutex> _lock2(queueDataLock);
 #define ResultLock std::lock_guard<std::mutex> _lock3(finishedQueueLock);
 
+// temp debug
+#include <Geode/Geode.hpp>
+using namespace geode::prelude;
+
 CatnipThreadPool::CatnipThreadPool(unsigned int tCount) {
     threadCount = tCount;
 }
@@ -71,6 +75,8 @@ void CatnipThreadPool::startPool() {
             w->finished = false;
         }
         
+        log::debug("Pool resumed");
+
         return;
     }
 
@@ -79,6 +85,8 @@ void CatnipThreadPool::startPool() {
         worker->thread = std::thread(&CatnipThreadPool::workerLoop, this, worker);
 
         workers.push_back(worker);
+
+        log::debug("Created worker {}", workers.size());
     }
 }
 
@@ -91,6 +99,8 @@ void CatnipThreadPool::terminatePool() {
     for(auto& w : workers) {
         w->thread.join();
         delete w;
+
+        log::debug("Terminated worker");
     }
     workers.clear();
 
@@ -104,6 +114,8 @@ void CatnipThreadPool::waitForTasks() {
 bool CatnipThreadPool::poolFinished() {
     WorkerLock
     return workersDone == this->getThreadCount();
+
+    log::debug("poolFinished() returned {} == {} -> {}", workersDone, this->getThreadCount(), workersDone == this->getThreadCount());
 }
 
 DataLoadingType* CatnipThreadPool::tryGetFinishedResult(bool& empty) {
@@ -117,6 +129,8 @@ DataLoadingType* CatnipThreadPool::tryGetFinishedResult(bool& empty) {
         }
         else if(this->poolFinished()) empty = true;
     }
+
+    //log::debug("tryGetFinishedResult empty: {}", empty);
     
     return data;
 }
