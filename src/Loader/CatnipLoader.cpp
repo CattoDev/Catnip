@@ -198,7 +198,7 @@ std::string CatnipLoader::getQualityExt() {
 CatnipLoader::TexturesVec CatnipLoader::getAllTexturesToLoad() {
     // hardcoded filenames
     auto textures = TexturesVec {
-        { "GJ_GameSheet" }, { "GJ_GameSheet02" }, { "GJ_GameSheet03" }, { "GJ_GameSheet04" }, { "GJ_GameSheetGlow" }, { "FireSheet_01" }, { "GJ_ShopSheet" }, { "CCControlColourPickerSpriteSheet" }, // sheets
+        { "GJ_GameSheet" }, { "GJ_GameSheet02" }, { "GJ_GameSheet03" }, { "GJ_GameSheet04" }, { "GJ_GameSheetGlow" }, { "FireSheet_01" }, { "GJ_ShopSheet" }, { "CCControlColourPickerSpriteSheet", kCCTexture2DPixelFormat_RGBA8888 }, // sheets
         { "smallDot" }, { "square01_001" }, { "square02_001" }, { "square02b_001" },
         { "GJ_gradientBG", kCCTexture2DPixelFormat_RGBA8888 }, { "edit_barBG_001", kCCTexture2DPixelFormat_RGBA8888 }, { "GJ_button_01", kCCTexture2DPixelFormat_RGBA8888 }, { "slidergroove2", kCCTexture2DPixelFormat_RGBA8888 }, { "sliderBar2", kCCTexture2DPixelFormat_RGBA8888 }, 
         { "GJ_square01" }, { "GJ_square02" }, { "GJ_square03" }, { "GJ_square04" }, { "GJ_square05" },

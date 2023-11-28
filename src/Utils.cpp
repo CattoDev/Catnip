@@ -378,3 +378,21 @@ std::string CatnipTimer::endWithStr() {
 void CatnipTimer::end() {
     log::info("{}ms", endWithStr());
 }
+
+void CatnipTimer::endNS() {
+    auto timeDiff = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::high_resolution_clock::now() - timer
+    ).count();
+
+    log::info("{}ns", timeDiff);
+}
+
+long long CatnipTimer::getResult() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::high_resolution_clock::now() - timer
+    ).count();
+}
+
+unsigned int getMaxCatnipThreads() {
+    return std::max(Mod::get()->getSettingValue<int64_t>("max-threads"), 2LL);
+}

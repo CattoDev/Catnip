@@ -15,7 +15,7 @@
 
 using namespace geode::prelude;
 
-struct DictLoadData : DataLoadingStruct {
+struct DictLoadData {
     CCDictionary* instance = nullptr;
     ghc::filesystem::path filePath;
     ghc::filesystem::path fileName;
@@ -41,11 +41,14 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         return plistPath;
     }
 
-    void initTextures(CatnipThreadPool& tPool) {
+    void initTextures(CatnipThreadPool& tPool, std::vector<CCTexture2DThreaded*>& texDataVec) {
         while(true) {
-            bool poolEmpty;
-            if(auto _data = tPool.tryGetFinishedResult(poolEmpty)) {
-                auto texData = as<CCTexture2DThreaded*>(_data->data);
+            bool poolFinished;
+
+            int idx = tPool.getFinishedResultIdx(poolFinished);
+
+            if(idx >= 0) {
+                auto texData = texDataVec.at(idx);
 
                 texData->texture->initWithData(texData->textureData, texData->pixelFormat, texData->width, texData->height, texData->imageSize);
 
@@ -58,10 +61,12 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
                 auto texDict = CCTextureCacheExtra::get()->getTexturesDict();
                 texDict->setObject(texData->texture, texData->filePath.string().c_str());
 
-                CC_SAFE_DELETE(_data);
+                CC_SAFE_DELETE(texData);
             }
-            else if(poolEmpty) break;
+            else if(poolFinished) break;
         }
+
+        texDataVec.clear();
 
         log::debug("Textures initialized!");
     }
@@ -74,12 +79,12 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         m_fields->allTextures.clear();
     }
 
-    static CCDictionary* createDictionary(std::string _dictPath) {
+    static bool createDictionary(DictLoadData* dictData) {
         CCDictMaker maker;
-        auto dictPath = getPlistPathFromSheet(_dictPath);
-        auto dict = maker.dictionaryWithContentsOfFile(dictPath.c_str());
+        auto dictPath = getPlistPathFromSheet(dictData->filePath.string());
+        dictData->instance = maker.dictionaryWithContentsOfFile(dictPath.c_str());
 
-        return dict;
+        return true;
     }
 
     void addSpecialDicts(std::vector<std::string>& specialPlists) {
@@ -94,7 +99,7 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
     static bool createTextureFromCache(CCTexture2DThreaded* data) {
         CachedTexture cTex;
         
-        log::debug("Creating {} from cache...", data->filePath);
+        CNLog("Creating {} from cache...", data->filePath);
         bool success = CacheManager::loadCachedTexture(data->filePath, cTex);
 
         if(success) {
@@ -113,23 +118,21 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         return success;
     }
 
-    static bool createTextureTask(DataLoadingStruct* _d) {
-        auto data = as<CCTexture2DThreaded*>(_d);
+    static bool createTextureTask(CCTexture2DThreaded* data) {
 
         if(!data->useCache || !createTextureFromCache(data)) {
-            log::debug("Creating {} from resources...", data->filePath);
+            CNLog("Creating {} from resources...", data->filePath);
 
             createTextureFromFileTS(data);
             
             // cache image
             if(data->g_cachingEnabled && data->createCache) {
-                log::debug("Caching image {}", data->filePath);
+                CNLog("Caching image {}", data->filePath);
                 CacheManager::cacheProcessedImage(data);
             }
         }
 
         if(data->successfulLoad) {
-            _d = data;
             return true;
         }
 
@@ -158,10 +161,17 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         this->updateLoadingLabel("Loading textures");
 
         // start thread pool (-1 cuz we do stuff in this thread aswell)
-        CatnipThreadPool tPool(std::thread::hardware_concurrency() - 1);
+        CatnipThreadPool tPool(getMaxCatnipThreads() - 1);
+
+        tPool.startPool();
 
         // queue textures
         std::string qualStr = cnl->getQualityExt();
+
+        std::vector<CCTexture2DThreaded*> texDataVec;
+        texDataVec.reserve(textures.size());
+
+        int idx = 0;
         for(TexListMeta& meta : textures) {
             auto texData = new CCTexture2DThreaded();
 
@@ -175,14 +185,19 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
                 texData->createCache = true;
             }
 
-            tPool.queueTask(new DataLoadingType(texData, CatnipLoadingLayer::createTextureTask));
+            texDataVec.push_back(texData);
+
+            tPool.queueTask([texData] { 
+                return CatnipLoadingLayer::createTextureTask(texData);
+            }, idx);
+
+            idx++;
         }
-        tPool.startPool();
 
         // OpenGL is single threaded so textures have to be initialized in the main thread
         ObjectToolbox::sharedState();
 
-        this->initTextures(tPool);
+        this->initTextures(tPool, texDataVec);
 
         // finish loading textures
         tPool.waitForTasks();
@@ -192,7 +207,11 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
             cnl->saveCachedTexData();
         }
 
+        this->updateLoadingLabel("Loading plists");
+
         // load plists
+        std::vector<DictLoadData*> dictDatas;
+        idx = 0;
         {
             for(TexListMeta& meta : textures) {
                 if(meta.plistPath.empty()) {
@@ -203,25 +222,25 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
 
                 data->fileName = meta.fileName;
                 data->filePath = meta.plistPath;
+                
+                dictDatas.push_back(data);
 
-                tPool.queueTask(new DataLoadingType(data, [](DataLoadingStruct* _d) {
-                    auto data = as<DictLoadData*>(_d);
+                tPool.queueTask([data] {
+                    return CatnipLoadingLayer::createDictionary(data);
+                }, idx);
 
-                    data->instance = CatnipLoadingLayer::createDictionary(data->filePath.string());
-                    _d = data;
-                        
-                    return true;
-                }));
+                idx++;
             }
-            tPool.startPool();
 
             this->addSpecialDicts(specialPlists);
 
             while(true) {
-                bool poolEmpty;
-                DataLoadingType* _data = nullptr;
-                if(_data = tPool.tryGetFinishedResult(poolEmpty)) {
-                    auto dictData = as<DictLoadData*>(_data->data);
+                bool poolFinished;
+
+                int idx = tPool.getFinishedResultIdx(poolFinished);
+
+                if(idx >= 0) {
+                    auto dictData = dictDatas.at(idx);
 
                     for(auto& t : m_fields->allTextures) {
                         if(!dictData->fileName.compare(t.first)) {
@@ -230,9 +249,11 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
                         }
                     }
 
-                    CC_SAFE_DELETE(_data);
+                    CC_SAFE_DELETE(dictData);
                 }
-                else if(poolEmpty) break;
+                else if(poolFinished) {
+                    break;
+                }
             }
 
             tPool.waitForTasks();
@@ -256,7 +277,10 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
     }
 
     void updateLoadingLabel(const char* status) {
-        m_fields->loadingLabel->setCString(fmt::format("Catnip [{} threads]: {}", std::thread::hardware_concurrency(), status).c_str());
+        std::string str = fmt::format("Catnip [{} threads]: {}", getMaxCatnipThreads(), status);
+        m_fields->loadingLabel->setCString(str.c_str());
+
+        CNLog("Loading label: {}", str);
 
         // redraw frame
         CCDirector::sharedDirector()->getRunningScene()->visit();
@@ -328,13 +352,19 @@ class $modify(CCFileUtils) {
 // testing
 #include <Geode/modify/CCTextureCache.hpp>
 
+std::mutex addImageLock;
 class $modify(CCTextureCache) {
     CCTexture2D* addImage(const char* imgPath, bool idk) {
+        addImageLock.lock();
+
         std::string pathKey = CCFileUtils::sharedFileUtils()->fullPathForFilename(imgPath, false);
         if(!m_pTextures->objectForKey(pathKey.c_str())) {
             log::warn("IMAGE NOT PRELOADED: {}", pathKey);
         }
 
-        return CCTextureCache::addImage(imgPath, idk);
+        auto res = CCTextureCache::addImage(imgPath, idk);
+        addImageLock.unlock();
+
+        return res;
     }
 };	

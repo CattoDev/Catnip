@@ -6,15 +6,22 @@
 #include <mutex>
 #include <queue>
 #include <vector>
+#include <condition_variable>
+#include <future>
+#include <memory>
+#include <type_traits>
 
 class CatnipThreadPool {
 private:
-    std::vector<ThreadPoolWorker*> workers;
-    std::queue<DataLoadingType*> dataQueue, finishedQueue;
+    std::vector<std::thread> workers;
+    std::queue<CatnipTask> tasksQueue;
+    std::queue<int> resultIdxQueue;
     unsigned int threadCount;
     bool scheduleShutdown = false;
-    int workersDone = 0;
-    std::mutex workerLock, queueDataLock, finishedQueueLock;
+    bool containResults = true;
+    std::atomic<int> threadsBusy = 0;
+    std::mutex threadLock, resultLock, busyLock;
+    std::condition_variable condVar, waitVar;
 
 public:
     CatnipThreadPool();
@@ -22,13 +29,14 @@ public:
     ~CatnipThreadPool();
 
     unsigned int getThreadCount();
-    void workerLoop(ThreadPoolWorker*);
-    void queueTask(DataLoadingType*);
+    void setContainResults(bool);
+    void workerLoop();
+    void queueTask(std::function<bool()>, int idx = 0);
     void startPool();
     void terminatePool();
     void waitForTasks();
     bool poolFinished();
-    DataLoadingType* tryGetFinishedResult(bool&);
+    int getFinishedResultIdx(bool&);
 };
 
 #endif

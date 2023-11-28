@@ -7,3 +7,6 @@
 [submodule "libraries/gzip-hpp"]
 	path = libraries/gzip-hpp
 	url = https://github.com/mapbox/gzip-hpp
+[submodule "libraries/imgui"]
+	path = libraries/imgui
+	url = https://github.com/ocornut/imgui

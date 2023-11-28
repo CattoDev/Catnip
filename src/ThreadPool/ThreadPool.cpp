@@ -1,19 +1,20 @@
+// improved with the help of https://github.com/dtrugman/ThreadPool/blob/master/ThreadPool.hpp
+
 #include "ThreadPool.hpp"
+#include <Utils.hpp>
 
-#define WorkerLock std::lock_guard<std::mutex> _lock1(workerLock);
-#define DataLock std::lock_guard<std::mutex> _lock2(queueDataLock);
-#define ResultLock std::lock_guard<std::mutex> _lock3(finishedQueueLock);
+// debug
+#include <Geode/loader/Log.hpp>
 
-// temp debug
-#include <Geode/Geode.hpp>
-using namespace geode::prelude;
+#define ThreadLock std::unique_lock<std::mutex> _tLock(threadLock);
+#define ResultLock std::unique_lock<std::mutex> _rLock(resultLock);
+
+CatnipThreadPool::CatnipThreadPool() {
+    threadCount = getMaxCatnipThreads();
+}
 
 CatnipThreadPool::CatnipThreadPool(unsigned int tCount) {
     threadCount = tCount;
-}
-
-CatnipThreadPool::CatnipThreadPool() {
-    threadCount = std::thread::hardware_concurrency();
 }
 
 CatnipThreadPool::~CatnipThreadPool() {
@@ -24,83 +25,93 @@ unsigned int CatnipThreadPool::getThreadCount() {
     return threadCount;
 }
 
-void CatnipThreadPool::workerLoop(ThreadPoolWorker* worker) {
-    while(true) {
-        // get queued data
-        DataLoadingType* data = nullptr;
-        {
-            DataLock
-            if(!dataQueue.empty()) {
-                data = dataQueue.front();
-                dataQueue.pop();
-            }
-        }
-
-        // process data
-        if(data) {
-            if(data->process(data->data)) {
-                ResultLock
-                finishedQueue.push(data);
-            } 
-            else {
-                // requeue
-                DataLock
-                dataQueue.push(data);
-            }
-        }
-        else {
-            // worker finished
-            WorkerLock
-            if(!worker->finished) {
-                workersDone++;
-                worker->finished = true;
-            }
-            
-            if(scheduleShutdown) break;
-        }
-    }
+void CatnipThreadPool::setContainResults(bool toggled) {
+    containResults = toggled;
 }
 
-void CatnipThreadPool::queueTask(DataLoadingType* data) {
-    DataLock
-    dataQueue.push(data);
+void CatnipThreadPool::workerLoop() {
+    geode::log::debug("Thread {} started.", std::this_thread::get_id());
+
+    while(true) {
+        // get task
+        CatnipTask task;
+        bool set = false;
+        {
+            //std::unique_lock<std::mutex> _tLock(threadLock);
+            ThreadLock
+            if(tasksQueue.empty()) {
+                if(scheduleShutdown) {
+                    break;
+                }
+
+                waitVar.notify_one();
+                condVar.wait(_tLock);
+            }
+            else {
+                threadsBusy++;
+                task = std::move(tasksQueue.front());
+                tasksQueue.pop();
+                set = true;
+            }
+        }
+
+        // execute task
+        if(set) {
+            if(task.func()) {
+                // successful
+                if(containResults) {
+                    {
+                        ResultLock
+                        resultIdxQueue.push(task.idx);
+                    }
+                } 
+            }
+            else {
+                // failed
+
+            }
+
+            threadsBusy--;  
+        }
+    }
+
+    geode::log::debug("Thread {} finished.", std::this_thread::get_id());
+}
+
+void CatnipThreadPool::queueTask(std::function<bool()> task, int taskIndex) {
+    ThreadLock
+    tasksQueue.emplace(CatnipTask { taskIndex, std::move(task) });
+
+    condVar.notify_one();
 }
 
 void CatnipThreadPool::startPool() {
-    workersDone = 0;
-
-    if(workers.size() >= this->getThreadCount()) {
-        WorkerLock
-        for(auto& w : workers) {
-            w->finished = false;
-        }
-        
-        log::debug("Pool resumed");
-
-        return;
+    // clear results
+    if(containResults) {
+        std::queue<int> empty;
+        std::swap(resultIdxQueue, empty);
     }
 
-    for(size_t i = 0; i < this->getThreadCount(); i++) {
-        auto worker = new ThreadPoolWorker();
-        worker->thread = std::thread(&CatnipThreadPool::workerLoop, this, worker);
-
-        workers.push_back(worker);
-
-        log::debug("Created worker {}", workers.size());
+    if(workers.empty()) {
+        for(size_t i = 0; i < this->getThreadCount(); i++) {
+            workers.push_back(std::thread(&CatnipThreadPool::workerLoop, this));
+        }
+    }
+    else {
+        condVar.notify_all();
     }
 }
 
 void CatnipThreadPool::terminatePool() {
     {
-        WorkerLock
+        ThreadLock
         scheduleShutdown = true;
     }
 
-    for(auto& w : workers) {
-        w->thread.join();
-        delete w;
+    condVar.notify_all();
 
-        log::debug("Terminated worker");
+    for(auto& w : workers) {
+        w.join();
     }
     workers.clear();
 
@@ -108,29 +119,26 @@ void CatnipThreadPool::terminatePool() {
 }
 
 void CatnipThreadPool::waitForTasks() {
-    while(!poolFinished()) {}
+    std::unique_lock lock(threadLock);
+    waitVar.wait(lock, [this] { return this->tasksQueue.empty() && threadsBusy == 0; });
 }
 
 bool CatnipThreadPool::poolFinished() {
-    WorkerLock
-    return workersDone == this->getThreadCount();
-
-    log::debug("poolFinished() returned {} == {} -> {}", workersDone, this->getThreadCount(), workersDone == this->getThreadCount());
+    ThreadLock
+    return this->tasksQueue.empty() && threadsBusy == 0;
 }
 
-DataLoadingType* CatnipThreadPool::tryGetFinishedResult(bool& empty) {
-    empty = false;
-    DataLoadingType* data = nullptr;
-    {
-        ResultLock
-        if(!finishedQueue.empty()) {
-            data = finishedQueue.front();
-            finishedQueue.pop();
-        }
-        else if(this->poolFinished()) empty = true;
-    }
+int CatnipThreadPool::getFinishedResultIdx(bool& finished) {
+    finished = false;
 
-    //log::debug("tryGetFinishedResult empty: {}", empty);
-    
-    return data;
+    int idx = -1;
+
+    ResultLock
+    if(!resultIdxQueue.empty()) {
+        idx = resultIdxQueue.front();
+        resultIdxQueue.pop();
+    }
+    else if(this->poolFinished()) finished = true;
+
+    return idx;
 }
