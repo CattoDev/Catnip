@@ -13,8 +13,6 @@
 
 using namespace geode::prelude;
 
-#define CN_DBGCODE(code)
-
 bool g_allowQuadUpdate = true;
 
 #define MBO(type, obj, offset) *reinterpret_cast<type*>(reinterpret_cast<uintptr_t>(obj) + offset)
@@ -44,11 +42,6 @@ struct CatnipGameObjectUpdateData {
     std::array<bool, 1100>* m_opacityExistsForGroup;
 
     CCDictionary* m_opacityActionsForGroup;
-};
-
-struct CatnipGameObject {
-    GameObject* obj;
-    bool shouldUpdateColor = true;
 };
 
 class $modify(CatnipPlayLayer, PlayLayer) {
@@ -163,7 +156,33 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         return mixedColor;
     }
 
-    static void preUpdateGameObject(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
+    /*static void addMainSpriteToParent(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
+        // blending stuff
+
+        // add to array
+        
+    }
+
+    static void activateObject(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
+        obj->m_shouldHide = false;
+
+        if(!obj->m_active && !obj->m_sleeping) {
+            obj->m_active = true;
+
+            if(!obj->m_invisible) {
+                obj->setVisible(true);
+
+                // register state object
+
+                // add main sprite
+                CatnipPlayLayer::addMainSpriteToParent(obj, objData);
+
+
+            }
+        }
+    }*/
+
+    static void updateGameObjectSprites(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
         // update main color
         if(obj->m_baseColorID || obj->m_pulseGroupCount || obj->m_alphaGroupCount) {
             obj->setObjectColor(obj->colorForMode(obj->m_baseColorID, true));
@@ -186,13 +205,6 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         }
 
         obj->activateObject();
-        //CatnipPlayLayer::activateObject(obj);
-    }
-
-    static void updateGameObjectsInVec(const std::vector<GameObject*>& objs, const CatnipGameObjectUpdateData& objData) {
-        for(const auto& obj : objs) {
-            updateGameObjectTS(obj, objData);
-        }
     }
 
     static void updateGameObjectTS(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
@@ -308,226 +320,19 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         // mirror portal anim
     }
 
+    static void handleObject(GameObject* obj, const CatnipGameObjectUpdateData& objData, const bool& fullReset) {
+        if(!obj->m_shouldHide) {
+            CatnipPlayLayer::updateGameObjectSprites(obj, objData);
+        }
+        else if(!fullReset) {
+            obj->deactivateObject(false);
+        }
+    }
+
     /*
         HOOKS
     */
-    /*void updateVisibilityNew() {
-        // TODO: clean up code
- 
-        auto dir = CCDirector::sharedDirector();
-        auto winSize = dir->getWinSize();
-        float screenRight = dir->getScreenRight();
-
-        // effect manager
-        m_effectManager->m_time = m_totalTime;
-        m_effectManager->processColors();
-
-        ccColor3B playerColor1 = m_effectManager->activeColorForIndex(1005);
-        m_effectManager->calculateLightBGColor(playerColor1);
-
-        // pulse
-        float pulseSize = this->getMeteringValue();
-
-        // lock pulse
-        if(m_isPracticeMode || m_isMute) {
-            pulseSize = .5f;
-        }
-
-        m_player1->m_meteringValue = pulseSize;
-        m_player2->m_meteringValue = pulseSize;
-
-        // variables
-        CatnipGameObjectUpdateData objData;
-
-        objData.pulseSize = pulseSize;
-        objData.m_totalTime = m_totalTime;
-        objData.m_hasColors = m_hasColors;
-        objData.m_halfScreenWidth = screenRight / 2.f;
-        objData.m_halfScreenWidthCameraPos = m_cameraPosition.x + objData.m_halfScreenWidth;
-        objData.m_activeEnterEffect = m_activeEnterEffect;
-        objData.m_cameraPosition = m_cameraPosition;
-        objData.unk460 = unk460;
-        objData.m_mirrorTransition = m_mirrorTransition;
-        objData.m_opacityExistsForGroup = &m_effectManager->m_opactiyExistsForGroup; // good job whoever named this lol
-        objData.m_opacityActionsForGroup = m_effectManager->m_opacityActionsForGroup;
-
-        bool isFlipping = this->isFlipping();
-        int leftSideSection = std::max(as<int>(floorf(m_cameraPosition.x / 100.f) - 1.f), 0);
-        int rightSideSection = std::max(as<int>(ceilf((m_cameraPosition.x + winSize.width) / 100.f) + 1.f), 0);
-        
-        CCRect screenViewRect(m_cameraPosition.x, m_cameraPosition.y, winSize.width, winSize.height); 
-
-        ccColor3B curBGColor = m_background->getColor();
-        objData.bgColorHSV = this->transformColor(curBGColor, 0, -0.3f, .4f);
-
-        objData.LBGColor = m_effectManager->activeColorForIndex(1007);
-
-        const ccColor3B BGColor = m_effectManager->activeColorForIndex(1000);
-        objData.curBGColorHSV = this->transformColor(BGColor, 0, -0.2f, .2f);
-
-        objData.isBGColorDark = BGColor.r + BGColor.g + BGColor.b < 150;
-        objData.m_isDead = m_player1->m_isDead;
-
-        objData.playerPosX = winSize.width / 2 - 75.f;
-        objData.playerPosX_rightSide = objData.playerPosX + 110.f; // I have no idea what this is supposed to be called
-        objData.screenRightOffset = screenRight - objData.playerPosX_rightSide - 90.f;
-
-        // hide objects from last frame
-        const size_t sectCount = m_sectionObjects->count();
-
-        for(size_t i = m_lastVisibleSection; i <= m_firstVisibleSection; i++) {
-            if(i >= 0 && i < sectCount) {
-                // get obj
-                auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
-
-                for(auto& obj : CCArrayExt<GameObject*>(objArr)) {
-                    obj->m_shouldHide = true;
-                }
-            }
-        }
-
-        // get objects to update this frame
-        for(size_t i = leftSideSection; i <= rightSideSection; i++) {
-            if(i >= 0 && i < sectCount) {
-                auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
-
-                if(i <= leftSideSection + 1 || i >= rightSideSection - 1) {
-                    for(auto& obj : CCArrayExt<GameObject*>(objArr)) {
-                        // disabled
-                        if(obj->m_groupDisabled) {
-                            obj->m_shouldHide = true;
-                            continue;
-                        }
-
-                        auto texRect = obj->getObjectTextureRect();
-
-                        if(screenViewRect.intersectsRect(texRect)) {
-                            obj->m_shouldHide = false;
-                            m_objectsToUpdate->addObject(obj);
-                        }
-                        else {
-                            if(!obj->m_unk2e8) {
-                                obj->m_shouldHide = true;
-                            }
-                            else {
-                                obj->m_shouldHide = false;
-                                m_objectsToUpdate->addObject(obj);
-                            }
-                        }
-                    }
-                }
-                else {
-                    // no section
-                    if(!objArr) {
-                        continue;
-                    }
-
-                    for(auto& obj : CCArrayExt<GameObject*>(objArr)) {
-                        if(obj->m_groupDisabled) {
-                            continue;
-                        }
-
-                        if(obj->m_active) {
-                            obj->m_shouldHide = false;
-                        }
-                        else {
-                            auto texRect = obj->getObjectTextureRect();
-
-                            if(!screenViewRect.intersectsRect(texRect)) {
-                                if(!obj->m_unk2e8) {
-                                    obj->m_shouldHide = true;
-                                    continue;
-                                }
-                            }
-                            obj->m_shouldHide = false;
-                        }
-                        m_objectsToUpdate->addObject(obj);
-                    }
-                }
-            }
-        }
-
-        if(!m_fullReset) {
-            for(size_t i = m_lastVisibleSection; i <= m_firstVisibleSection; i++) {
-                if(i >= 0 && i < sectCount) {
-                    auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
-                    if(objArr) {
-                        for(auto& obj : CCArrayExt<GameObject*>(objArr)) {
-                            obj->deactivateObject(false);
-                        }
-                    }
-                }
-            }   
-        }
-
-        // deactivate processed out of bounds objects
-        for(auto& obj : CCArrayExt<GameObject*>(m_processedGroups)) {
-            if( obj->m_section < leftSideSection
-             || obj->m_section > rightSideSection
-            ) {
-                obj->deactivateObject(true);
-            } 
-        }
-        m_processedGroups->removeAllObjects();
-
-        // update objects
-        auto pool = m_fields->threadPool.get();
-
-        const int threadCount = pool->getThreadCount();
-        int currentArrayIdx = 0;
-
-        // 20 / 6 = 3
-        int chunkSize = m_objectsToUpdate->count();
-        if(chunkSize >= threadCount) {
-            chunkSize /= threadCount;
-        }
-
-        std::vector<std::vector<GameObject*>> chunks;
-        chunks.resize(threadCount);
-
-        size_t currentObj = 1;
-        for(auto& obj : CCArrayExt<GameObject*>(m_objectsToUpdate)) {
-            this->preUpdateGameObject(obj, objData);
-
-            auto& vec = chunks[currentArrayIdx];
-
-            vec.push_back(obj);
-
-            if(vec.size() + 1 > chunkSize && currentArrayIdx < threadCount - 1) {
-                currentArrayIdx++;
-            }
-
-            currentObj++;
-        }
-
-        g_allowQuadUpdate = false;
-
-        for(const auto& chunk : chunks) {
-            pool->queueTask([&chunk, &objData] {
-                CatnipPlayLayer::updateGameObjectsInVec(chunk, objData);
-
-                return true;
-            }, 0);
-        }
-
-        pool->waitForTasks();
-
-        g_allowQuadUpdate = true;
-
-        // finish
-        m_fullReset = false;
-        m_objectsToUpdate->removeAllObjects();
-        m_firstVisibleSection = rightSideSection;
-        m_lastVisibleSection = leftSideSection;
-        unk460 = false;
-        unk464->removeAllObjects();
-
-        m_hasColors.clear();
-
-        //CatnipTimer::endNS();
-    }*/
-
-    void updateVisibilityNewer() {
+    void updateVisibility() {
         auto dir = CCDirector::sharedDirector();
         auto winSize = dir->getWinSize();
         float screenRight = dir->getScreenRight();
@@ -591,170 +396,105 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         objData.playerPosX_rightSide = objData.playerPosX + 110.f; // I have no idea what this is supposed to be called
         objData.screenRightOffset = screenRight - objData.playerPosX_rightSide - 90.f;
 
-        // get objects in visible sections
+        auto pool = m_fields->threadPool.get();
+
+        // get objects to update
         for(size_t i = furthestLeftSection; i <= furthestRightSection; i++) {
             if(i >= 0 && i < sectCount) {
                 auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
 
                 for(size_t c = 0; c < objArr->count(); c++) {
-                    const auto obj = as<GameObject*>(objArr->objectAtIndex(c));
+                    auto obj = as<GameObject*>(objArr->objectAtIndex(c));
+
+                    const int section = obj->m_section;
+
+                    // hide object from last frame
+                    if(section >= m_lastVisibleSection && section <= m_firstVisibleSection) {
+                        obj->m_shouldHide = true;
+                    }
+
+                    // object not toggled off
+                    if(!obj->m_groupDisabled) {
+                        const CCRect& texRect = obj->getObjectTextureRect();
+                        const bool intersectsSW = screenViewRect.intersectsRect(texRect);
+
+                        // object in edges of visible sections
+                        if(section <= firstVisibleSection + 1 || section >= lastVisibleSection - 1) {
+                            // object in view or (idk)
+                            if(intersectsSW || obj->m_unk2e8) {
+                                obj->m_shouldHide = false;
+                            }
+                            else {
+                                obj->m_shouldHide = true;
+                            }
+                        }
+                        else {
+                            // object in visible sections
+                            if(obj->m_active || intersectsSW || obj->m_unk2e8) {
+                                obj->m_shouldHide = false;
+                            }
+                            else {
+                                obj->m_shouldHide = true;
+                            }
+                        }
+                    }
+                    else {
+                        obj->m_shouldHide = true;
+                    }
 
                     m_objectsToUpdate->addObject(obj);
                 }
             }
         }
 
-        auto pool = m_fields->threadPool.get();
-
-        // objects per thread
-        const size_t objCount = m_objectsToUpdate->count();
-        unsigned int chunkSize = as<int>(std::round(as<float>(objCount) / as<float>(pool->getThreadCount())));
-
-        while(chunkSize * pool->getThreadCount() < objCount) {
-            // not big enough lol
-            chunkSize++;
-        }
+        // chunk size
+        const int objCount = m_objectsToUpdate->data->num;
+        const int threadCount = pool->getThreadCount();
+        int chunkSize = objCount / threadCount;
 
         g_allowQuadUpdate = false;
 
-        CatnipTimer::start();
+        for(size_t i = 0; i < threadCount; i++) {
+            const int from = chunkSize * i;
 
-        std::vector<GameObject*> objChunk;
-        for(size_t i = 0; i < objCount; i++) {
-            const auto obj = as<GameObject*>(m_objectsToUpdate->objectAtIndex(i));
-
-            objChunk.push_back(obj);
-
-            if(objChunk.size() + 1 > chunkSize || i + 1 == objCount) {
-                // queue object update task
-                pool->queueTask([this, objChunk, &objData, &screenViewRect, &firstVisibleSection, &lastVisibleSection] {
-                    for(const auto obj : objChunk) {
-                        const int section = obj->m_section;
-
-                        // hide object from last frame
-                        if(section >= m_lastVisibleSection && section <= m_firstVisibleSection) {
-                            obj->m_shouldHide = true;
-                        }
-
-                        // object not toggled off
-                        if(!obj->m_groupDisabled) {
-                            const CCRect& texRect = obj->getObjectTextureRect();
-                            const bool intersectsSW = screenViewRect.intersectsRect(texRect);
-
-                            // object in edges of visible sections
-                            if(section <= firstVisibleSection + 1 || section >= lastVisibleSection - 1) {
-                                // object in view or (idk)
-                                if(intersectsSW || obj->m_unk2e8) {
-                                    obj->m_shouldHide = false;
-                                }
-                                else {
-                                    obj->m_shouldHide = true;
-                                }
-                            }
-                            else {
-                                // object in visible sections
-                                if(obj->m_active || intersectsSW || obj->m_unk2e8) {
-                                    obj->m_shouldHide = false;
-                                }
-                                else {
-                                    obj->m_shouldHide = true;
-                                }
-                            }
-                        }
-                        else {
-                            obj->m_shouldHide = true;
-                        }
-
-                        updateGameObjectTS(obj, objData);
-                    }
-
-                    return true;
-                });
-
-                objChunk.clear();
+            int to = chunkSize * (i + 1);
+            if(i + 1 >= threadCount) {
+                to = objCount;
             }
+
+            pool->queueTask([this, from, to, &chunkSize, &objData, screenViewRect, &firstVisibleSection, &lastVisibleSection] {
+                // process chunk
+                for(size_t i = from; i < to; i++) {
+                    auto obj = as<GameObject*>(m_objectsToUpdate->data->arr[i]);
+
+                    // update object
+                    CatnipPlayLayer::updateGameObjectTS(obj, objData);
+                }
+                
+                return true;
+            });
         }
 
         pool->waitForTasks();
-
         g_allowQuadUpdate = true;
-
-        /*for(size_t i = furthestLeftSection; i <= furthestRightSection; i++) {
-            if(i >= 0 && i < sectCount) {
-                    auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
-
-                    for(auto& obj : CCArrayExt<GameObject*>(objArr)) {
-                        pool->queueTask([this, obj, &objData, i, screenViewRect, &firstVisibleSection, &lastVisibleSection] {
-                            // hide object from last frame
-                            if(i >= m_lastVisibleSection && i <= m_firstVisibleSection) {
-                                obj->m_shouldHide = true;
-                            }
-
-                            // object not toggled off
-                            if(!obj->m_groupDisabled) {
-                                const CCRect& texRect = obj->getObjectTextureRect();
-                                const bool intersectsSW = screenViewRect.intersectsRect(texRect);
-
-                                // object in edges of visible sections
-                                if(i <= firstVisibleSection + 1 || i >= lastVisibleSection - 1) {
-                                    // object in view or (idk)
-                                    if(intersectsSW || obj->m_unk2e8) {
-                                        obj->m_shouldHide = false;
-                                    }
-                                    else {
-                                        obj->m_shouldHide = true;
-                                    }
-                                }
-                                else {
-                                    // object in visible sections
-                                    if(obj->m_active || intersectsSW || obj->m_unk2e8) {
-                                        obj->m_shouldHide = false;
-                                    }
-                                    else {
-                                        obj->m_shouldHide = true;
-                                    }
-                                }
-                            }
-                            else {
-                                obj->m_shouldHide = true;
-                            }
-
-                            this->handleObject(obj, objData);
-
-                            return true;
-                        });
-                    }
-
-                //    return true;
-                //}, 0);
-            }
-        }*/
-
-        //pool->waitForTasks();
-
-        // deactivate processed objects outside visible sections
-        for(auto& obj : CCArrayExt<GameObject*>(m_processedGroups)) {
-            if(obj->m_section < firstVisibleSection || obj->m_section > lastVisibleSection) {
-                obj->deactivateObject(true);
-            }
-        }
-        m_processedGroups->removeAllObjects();
-
-        CatnipTimer::start();
 
         // objects have to be activated in the main thread
         // why they break in a different thread I have no idea
         // (literally just adding the sprites to batch nodes)
         for(size_t i = 0; i < m_objectsToUpdate->data->num; i++) {
-            const auto obj = as<GameObject*>(m_objectsToUpdate->data->arr[i]);
+            auto obj = as<GameObject*>(m_objectsToUpdate->data->arr[i]);
 
-            if(!obj->m_shouldHide) {
-                preUpdateGameObject(obj, objData);
-            }
-            else if(!m_fullReset) {
-                obj->deactivateObject(false);
+            CatnipPlayLayer::handleObject(obj, objData, m_fullReset);
+        }
+
+        // deactivate processed objects outside visible sections
+        for(size_t i = 0; i < m_processedGroups->count(); i++) {
+            auto obj = as<GameObject*>(m_processedGroups->objectAtIndex(i));
+            if(obj->m_section < firstVisibleSection || obj->m_section > lastVisibleSection) {
+                obj->deactivateObject(true);
             }
         }
+        m_processedGroups->removeAllObjects();
 
         // finish
         m_fullReset = false;
@@ -765,10 +505,6 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         unk464->removeAllObjects();
 
         m_hasColors.clear();
-    }
-
-    void updateVisibility() {
-        this->updateVisibilityNewer();
     }
 
     /*CN_DBGCODE(
@@ -806,7 +542,7 @@ class $modify(CatnipPlayLayer, PlayLayer) {
 
         // start thread pool
         if(enabled) {
-            m_fields->threadPool = std::make_unique<CatnipThreadPool>();
+            m_fields->threadPool = std::make_unique<CatnipThreadPool>(getMaxCatnipThreads() - 1);
 
             auto pool = m_fields->threadPool.get();
             pool->setContainResults(false);
