@@ -1,5 +1,5 @@
 {
-	"geode": "1.3.5",
+	"geode": "1.3.7",
 	"version": "v1.0.0-alpha.1",
 	"id": "cattodev.catnip",
 	"name": "Catnip",
@@ -35,7 +35,7 @@
 			"name": "Max threads",
 			"description": "Maximum amount to threads to use when loading/rendering.\n(1 core = 2 threads)",
 			"type": "int",
-			"default": -1,
+			"default": 6,
 			"control": {
 				"input": true,
 				"slider": false

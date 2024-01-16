@@ -3,6 +3,8 @@
 #include <ThreadPool/ThreadPool.hpp>
 #include <Utils.hpp>
 #include <Profiler/Profiler.hpp>
+#include "TextureAtlas.hpp"
+
 #include <mutex>
 
 // hooks
@@ -44,9 +46,10 @@ struct CatnipGameObjectUpdateData {
     CCDictionary* m_opacityActionsForGroup;
 };
 
+std::mutex g_batchNodeLock;
+
 class $modify(CatnipPlayLayer, PlayLayer) {
     std::unique_ptr<CatnipThreadPool> threadPool;
-    std::vector<GameObject*> objectsToUpdate;
 
     float getMeteringValue() {
         if(m_isAudioMeteringSupported) {
@@ -156,14 +159,49 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         return mixedColor;
     }
 
-    /*static void addMainSpriteToParent(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
-        // blending stuff
-
-        // add to array
-        
+    static int getColorMode(GJSpriteColor* color) {
+        return color->m_colorID && color->m_colorID != color->m_defaultColorID ? color->m_colorID : color->m_defaultColorID; 
     }
 
-    static void activateObject(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
+    static void addMainSpriteToParent(GameObject* obj) {
+        // blending stuff
+        /*obj->m_unknownVisibility347 = obj->shouldBlendColor(obj->m_baseColor, true);
+
+        if(obj->m_detailSprite) {
+            if(CatnipPlayLayer::getColorMode(obj->m_detailColor) == 1012) {
+
+            }
+            else {
+
+            }
+        }
+
+        // add to batch node
+        int zLayer = as<int>(obj->m_zLayer);
+
+        // z order stuff
+
+        const int parentMode = obj->getParentMode();
+        auto parent = as<CCSpriteBatchNode*>(PlayLayer::get()->parentForZLayer(zLayer, obj->m_unknownVisibility347, parentMode)); 
+
+        //CNLog("{}, {}, {}", zLayer, obj->m_unknownVisibility347, parentMode); 
+
+        if(parent) {
+            std::lock_guard l(g_batchNodeLock);
+            obj->removeFromParentAndCleanup(false);
+            parent->addChild(obj, obj->m_gameZOrder);
+
+            //CNLog("{} < {}", parent->getTextureAtlas()->getTotalQuads(), parent->getTextureAtlas()->getCapacity());  
+        }
+        else {
+            CNLog("FAIL???");
+        }*/
+
+        std::lock_guard l(g_batchNodeLock);
+        obj->addMainSpriteToParent(false);                                        
+    }
+
+    static void activateObject(GameObject* obj) {
         obj->m_shouldHide = false;
 
         if(!obj->m_active && !obj->m_sleeping) {
@@ -175,12 +213,41 @@ class $modify(CatnipPlayLayer, PlayLayer) {
                 // register state object
 
                 // add main sprite
-                CatnipPlayLayer::addMainSpriteToParent(obj, objData);
+                CatnipPlayLayer::addMainSpriteToParent(obj);
 
+                // run action
+                /*if(obj->m_unk1 && obj->m_myAction) {
+                    if(obj->m_runActionWithTag) {
+                        auto c = obj->getChildByTag(1);
 
+                        if(c && !c->getActionByTag(11)) {
+                            c->runAction(obj->m_myAction);
+                        }
+                    }
+                    else if(!obj->getActionByTag(11)) {
+                        obj->runAction(obj->m_myAction);
+                    }
+                }*/
             }
         }
-    }*/
+    }
+
+    static void deactivateObject(GameObject* obj) {
+        /*if(obj->m_shouldHide) {
+            obj->m_active = false;
+
+            obj->setVisible(false);
+
+            std::lock_guard l(g_batchNodeLock);
+            obj->removeFromParentAndCleanup(false);
+        }
+        else {
+            obj->m_shouldHide = true;
+        }*/
+
+        std::lock_guard l(g_batchNodeLock);
+        obj->deactivateObject(false);
+    }
 
     static void updateGameObjectSprites(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
         // update main color
@@ -199,12 +266,13 @@ class $modify(CatnipPlayLayer, PlayLayer) {
 
         if(obj->m_active && !hasColorsMap.empty()) {
             if(hasColorsMap[as<short>(obj->m_baseColorID)] || (obj->m_detailSprite && hasColorsMap[as<short>(obj->m_detailColorID)])) {
-                obj->addMainSpriteToParent(false);
-                obj->addColorSpriteToParent(false);
+                //obj->addMainSpriteToParent(false);
+                //obj->addColorSpriteToParent(false);
             }
         }
 
-        obj->activateObject();
+        //obj->activateObject();
+        CatnipPlayLayer::activateObject(obj);
     }
 
     static void updateGameObjectTS(GameObject* obj, const CatnipGameObjectUpdateData& objData) {
@@ -325,7 +393,7 @@ class $modify(CatnipPlayLayer, PlayLayer) {
             CatnipPlayLayer::updateGameObjectSprites(obj, objData);
         }
         else if(!fullReset) {
-            obj->deactivateObject(false);
+            CatnipPlayLayer::deactivateObject(obj);
         }
     }
 
@@ -398,7 +466,100 @@ class $modify(CatnipPlayLayer, PlayLayer) {
 
         auto pool = m_fields->threadPool.get();
 
+        // get object count
+        int objectsInVisibleSections = 0;
+        for(size_t i = furthestLeftSection; i <= furthestRightSection; i++) {
+            if(i >= 0 && i < sectCount) {
+                auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
+
+                objectsInVisibleSections += objArr->data->num;
+
+                // copy array
+                copyArrayToArray(objArr, m_objectsToUpdate);
+            }
+        }
+
+        // calculate chunk
+        const int threadCount = pool->getThreadCount();
+        int chunkSize = objectsInVisibleSections / threadCount;
+        bool singleThread = false;
+
+        if(chunkSize == 0 && objectsInVisibleSections > 0) {
+            chunkSize = objectsInVisibleSections;
+            singleThread = true;
+        }
+
+        g_allowQuadUpdate = false;
+        TextureAtlas::setAtlasQueueing(true);
+
+        // update objects
+        for(size_t i = 0; i < threadCount; i++) {
+            const int from = chunkSize * i;
+
+            int to = chunkSize * (i + 1);
+            if(i + 1 >= threadCount) {
+                to = objectsInVisibleSections;
+            }
+
+            pool->queueTask([this, from, to, &objData, &firstVisibleSection, &lastVisibleSection, &furthestLeftSection, &furthestRightSection, &sectCount, &screenViewRect] {
+                for(size_t i = from; i < to; i++) {
+                    auto obj = as<GameObject*>(m_objectsToUpdate->objectAtIndex(i));
+
+                    const int section = obj->m_section;
+
+                    // hide object from last frame
+                    if(section >= m_lastVisibleSection && section <= m_firstVisibleSection) {
+                        obj->m_shouldHide = true;
+                    }
+
+                    // object not toggled off
+                    if(!obj->m_groupDisabled) {
+                        const CCRect& texRect = obj->getObjectTextureRect();
+                        const bool intersectsSW = screenViewRect.intersectsRect(texRect);
+
+                        // object in edges of visible sections
+                        if(section <= firstVisibleSection + 1 || section >= lastVisibleSection - 1) {
+                            // object in view or (idk)
+                            if(intersectsSW || obj->m_unk2e8) {
+                                obj->m_shouldHide = false;
+                            }
+                            else {
+                                obj->m_shouldHide = true;
+                            }
+                        }
+                        else {
+                            // object in visible sections
+                            if(obj->m_active || intersectsSW || obj->m_unk2e8) {
+                                obj->m_shouldHide = false;
+                            }
+                            else {
+                                obj->m_shouldHide = true;
+                            }
+                        }
+                    }
+                    else {
+                        obj->m_shouldHide = true;
+                    }
+
+                    // update object
+                    CatnipPlayLayer::handleObject(obj, objData, m_fullReset);
+                    //CatnipPlayLayer::updateGameObjectTS(obj, objData);
+                }
+                
+                return true;
+            });
+
+            if(singleThread) break;
+        }
+
+        pool->waitForTasks();
+
+        g_allowQuadUpdate = true;
+        TextureAtlas::setAtlasQueueing(false);
+        TextureAtlas::mapAtlasBuffers();
+
         // get objects to update
+        #if 0
         for(size_t i = furthestLeftSection; i <= furthestRightSection; i++) {
             if(i >= 0 && i < sectCount) {
                 auto objArr = as<CCArray*>(m_sectionObjects->objectAtIndex(i));
@@ -453,6 +614,7 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         int chunkSize = objCount / threadCount;
 
         g_allowQuadUpdate = false;
+        TextureAtlas::setAtlasQueueing(true);
 
         for(size_t i = 0; i < threadCount; i++) {
             const int from = chunkSize * i;
@@ -462,12 +624,13 @@ class $modify(CatnipPlayLayer, PlayLayer) {
                 to = objCount;
             }
 
-            pool->queueTask([this, from, to, &chunkSize, &objData, screenViewRect, &firstVisibleSection, &lastVisibleSection] {
+            pool->queueTask([this, from, to, &objData] {
                 // process chunk
                 for(size_t i = from; i < to; i++) {
                     auto obj = as<GameObject*>(m_objectsToUpdate->data->arr[i]);
 
                     // update object
+                    CatnipPlayLayer::handleObject(obj, objData, m_fullReset);
                     CatnipPlayLayer::updateGameObjectTS(obj, objData);
                 }
                 
@@ -476,16 +639,12 @@ class $modify(CatnipPlayLayer, PlayLayer) {
         }
 
         pool->waitForTasks();
+
         g_allowQuadUpdate = true;
+        TextureAtlas::setAtlasQueueing(false);
+        TextureAtlas::mapAtlasBuffers();
 
-        // objects have to be activated in the main thread
-        // why they break in a different thread I have no idea
-        // (literally just adding the sprites to batch nodes)
-        for(size_t i = 0; i < m_objectsToUpdate->data->num; i++) {
-            auto obj = as<GameObject*>(m_objectsToUpdate->data->arr[i]);
-
-            CatnipPlayLayer::handleObject(obj, objData, m_fullReset);
-        }
+        #endif
 
         // deactivate processed objects outside visible sections
         for(size_t i = 0; i < m_processedGroups->count(); i++) {
@@ -498,33 +657,20 @@ class $modify(CatnipPlayLayer, PlayLayer) {
 
         // finish
         m_fullReset = false;
-        m_objectsToUpdate->removeAllObjects();
+
         m_firstVisibleSection = firstVisibleSection;
         m_lastVisibleSection = lastVisibleSection;
         unk460 = false;
         unk464->removeAllObjects();
 
         m_hasColors.clear();
+
+        // removeAllObjects iterates every object, releases it and sets num to 0
+        // since we copy the array we can't retain every member due to performance
+        // so we just reset num to 0
+        // I'm sure this will cause no memory leaks!
+        m_objectsToUpdate->data->num = 0;
     }
-
-    /*CN_DBGCODE(
-        void updateVisibility() {
-            auto time = CNPROF_TIMECLASSVOIDFUNC([this] {
-                //PlayLayer::updateVisibility();
-                this->updateVisibilityNewer();
-            });
-
-            CNPROF_PUSHSTAT({ "PlayLayer::updateVisibility", time });
-        }
-
-        void update(float dt) {
-            auto time = CNPROF_TIMECLASSVOIDFUNC([this, dt] {
-                PlayLayer::update(dt);
-            });
-
-            CNPROF_SETMAXTIME(time);
-        }
-    );*/
 
     bool init(GJGameLevel* level) {
         auto catnip = Mod::get();

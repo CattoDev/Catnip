@@ -325,9 +325,9 @@ class $modify(CatnipLoadingLayer, LoadingLayer) {
         log::info("Game loaded in {}ms", CatnipTimer::endWithStr());
     }
     
-    static void onModify(auto& self) {
-        (void)self.setHookPriority("LoadingLayer::loadAssets", -100); // just incase
-    }
+    /*static void onModify(auto& self) {
+        (void)self.setHookPriority("LoadingLayer::loadAssets", 0); // just incase
+    }*/
 };
 
 class $modify(CCFileUtils) {

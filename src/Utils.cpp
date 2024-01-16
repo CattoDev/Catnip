@@ -396,3 +396,18 @@ long long CatnipTimer::getResult() {
 unsigned int getMaxCatnipThreads() {
     return std::max(Mod::get()->getSettingValue<int64_t>("max-threads"), 2LL);
 }
+
+void copyArrayToArray(CCArray* from, CCArray* to) {
+    // increase capacity
+    if(to->data->num + from->data->num >= to->data->max) {
+        to->data->max = to->data->num + from->data->num;
+
+        CCObject** newArr = (CCObject**)realloc( to->data->arr, to->data->max * sizeof(CCObject*) );
+        to->data->arr = newArr;
+    }
+
+    // copy array
+    memcpy((void *)&to->data->arr[to->data->num], (void*)from->data->arr, sizeof(CCObject*) * from->data->num);
+
+    to->data->num += from->data->num;
+}

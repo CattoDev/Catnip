@@ -18,7 +18,7 @@ set(LIB_LIST ${CMAKE_SOURCE_DIR}/libraries/png/libpng.lib ${CMAKE_SOURCE_DIR}/li
 
 if(CN_DEBUG) 
     # imgui (https://github.com/matcool/CocosExplorer/blob/master/libraries/imgui-hook/CMakeLists.txt)
-    add_library(imgui STATIC
+    add_library(imgui STATIC    
         libraries/imgui/imgui.cpp
         libraries/imgui/imgui_widgets.cpp
         libraries/imgui/imgui_tables.cpp

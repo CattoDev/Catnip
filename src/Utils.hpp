@@ -42,5 +42,6 @@ unsigned char* getFileData(const char* filePath, unsigned long *bytesRead);
 void writeFileData(const char* filePath, unsigned char* data, unsigned long dataSize);
 void createTextureFromFileTS(CCTexture2DThreaded*);
 unsigned int getMaxCatnipThreads();
+void copyArrayToArray(CCArray* from, CCArray* to);
 
 #endif

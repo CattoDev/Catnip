@@ -2,7 +2,7 @@
 
 using namespace geode::prelude;
 
-// first time config
+/*// first time config
 $on_mod(Loaded) {
     auto mod = Mod::get();
     int val = mod->getSettingValue<int64_t>("max-threads");
@@ -10,4 +10,4 @@ $on_mod(Loaded) {
     if(val == -1) {
         mod->setSettingValue<int64_t>("max-threads", std::thread::hardware_concurrency());
     }
-}
+}*/
